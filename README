@@ -1,0 +1,15 @@
+MIT 6.824 Operation System lab
+
+Branch view:
+  - lab2
+  - lab3
+  - lab4
+  - lab5
+
+Set up:
+
+git clone
+
+
+Use git checkout to access lab source file listed above.
+Each lab includes a report.pdf written in Chinese, which may help you understand.
