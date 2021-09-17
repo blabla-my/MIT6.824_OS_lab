@@ -23,17 +23,20 @@ int32_t
 ipc_recv(envid_t *from_env_store, void *pg, int *perm_store)
 {
 	// LAB 4: Your code here.
-	int r;
-	pg = pg ? pg: (void*)UTOP;
-	r = sys_ipc_recv(pg);
-	if (from_env_store){
-		*from_env_store = r<0 ? 0 : thisenv->env_ipc_from;
+	if (pg == NULL) {
+		pg = (void *)-1;
 	}
-	if(perm_store){
-		*perm_store = r<0 ? 0 : thisenv->env_ipc_perm;
+	int r = sys_ipc_recv(pg);
+	if (r < 0) {				//系统调用失败
+		if (from_env_store) *from_env_store = 0;
+		if (perm_store) *perm_store = 0;
+		return r;
 	}
-	return r<0 ? r : thisenv->env_ipc_value;
-	//panic("ipc_recv not implemented");
+	if (from_env_store)
+		*from_env_store = thisenv->env_ipc_from;
+	if (perm_store)
+		*perm_store = thisenv->env_ipc_perm;
+	return thisenv->env_ipc_value;
 }
 
 // Send 'val' (and 'pg' with 'perm', if 'pg' is nonnull) to 'toenv'.
@@ -48,20 +51,20 @@ void
 ipc_send(envid_t to_env, uint32_t val, void *pg, int perm)
 {
 	// LAB 4: Your code here.
-	pg = pg ? pg : (void*)UTOP;
+	if (pg == NULL) {
+		pg = (void *)-1;
+	}
 	int r;
-	// 反复尝试发送，若接受方不处于接受状态，继续发送
-	// 同时需要 yield 
-RETRY:
-	r = sys_ipc_try_send(to_env,val,pg,perm);
-	if (r<0 && r!=-E_IPC_NOT_RECV){
-		panic("ipc_send: %e\n",r);
+	while(1) {
+		r = sys_ipc_try_send(to_env, val, pg, perm);
+		if (r == 0) {		//发送成功
+			return;
+		} else if (r == -E_IPC_NOT_RECV) {	//接收进程没有准备好
+			sys_yield();
+		} else {			//其它错误
+			panic("ipc_send():%e", r);
+		}
 	}
-	if (r == -E_IPC_NOT_RECV){
-		sys_yield();
-		goto RETRY;
-	}
-	//panic("ipc_send not implemented");
 }
 
 // Find the first environment of the given type.  We'll use this to

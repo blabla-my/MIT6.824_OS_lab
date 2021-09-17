@@ -33,38 +33,36 @@ i386_init(void)
 	// Lab 3 user environment initialization functions
 	env_init();
 	trap_init();
-	
+
 	// Lab 4 multiprocessor initialization functions
-	mp_init();
-	lapic_init();
+	mp_init();		//初始化cpus数组，bootcpu指针，ncpu，LAPIC地址lapicaddr
+	lapic_init();	//初始化LAPIC，将虚拟地址MMIOBASE映射到lapicaddr(lapicaddr is the physical address of the LAPIC's 4K MMIO region)
 
 	// Lab 4 multitasking initialization functions
 	pic_init();
 
 	// Acquire the big kernel lock before waking up APs
 	// Your code here:
-	// BPS lock the kernel, other 
-	lock_kernel();
+	lock_kernel();	//BSP获取内核锁
 	// Starting non-boot CPUs
-	boot_aps();
+	boot_aps();		//将初始化代码拷贝到MPENTRY_PADDR处，然后依次启动所有AP
+
+	// Start fs.
+	ENV_CREATE(fs_fs, ENV_TYPE_FS);		//创建文件系统Env
 
 #if defined(TEST)
 	// Don't touch -- used by grading script!
 	ENV_CREATE(TEST, ENV_TYPE_USER);
 #else
 	// Touch all you want.
-	//ENV_CREATE(user_yield, ENV_TYPE_USER);
-	//ENV_CREATE(user_yield, ENV_TYPE_USER);
-	//ENV_CREATE(user_yield, ENV_TYPE_USER);
-	ENV_CREATE(user_priority_sched, ENV_TYPE_USER);
-	ENV_CREATE(user_priority_sched, ENV_TYPE_USER);
-	ENV_CREATE(user_priority_sched, ENV_TYPE_USER);
-	ENV_CREATE(user_priority_sched, ENV_TYPE_USER);
+	ENV_CREATE(user_testfile, ENV_TYPE_USER);
 #endif // TEST*
 
+	// Should not be necessary - drains keyboard because interrupt has given up.
+	kbd_intr();
+
 	// Schedule and run the first user environment!
-	//sched_yield();
-	sched_priority_yield();
+	sched_yield();
 }
 
 // While boot_aps is booting a given CPU, it communicates the per-core
@@ -79,14 +77,16 @@ boot_aps(void)
 	extern unsigned char mpentry_start[], mpentry_end[];
 	void *code;
 	struct CpuInfo *c;
+
 	// Write entry code to unused memory at MPENTRY_PADDR
 	code = KADDR(MPENTRY_PADDR);
 	memmove(code, mpentry_start, mpentry_end - mpentry_start);
 
 	// Boot each AP one at a time
 	for (c = cpus; c < cpus + ncpu; c++) {
-		if (c == cpus + cpunum())  // We've started already.
+		if (c == cpus + cpunum())  // We've started already. 现在运行在BSP
 			continue;
+
 		// Tell mpentry.S what stack to use 
 		mpentry_kstack = percpu_kstacks[c - cpus] + KSTKSIZE;
 		// Start the CPU at mpentry_start
@@ -106,20 +106,17 @@ mp_main(void)
 	cprintf("SMP: CPU %d starting\n", cpunum());
 
 	lapic_init();
-	env_init_percpu();
-	trap_init_percpu();
-	xchg(&thiscpu->cpu_status, CPU_STARTED); // tell boot_aps() we're up
+	env_init_percpu();			//设置GDT，每个CPU都需要执行一次
+	trap_init_percpu();			//安装TSS描述符，每个CPU都需要执行一次
+	xchg(&thiscpu->cpu_status, CPU_STARTED); // tell boot_aps() we're up，需要原子操作
 
 	// Now that we have finished some basic setup, call sched_yield()
 	// to start running processes on this CPU.  But make sure that
 	// only one CPU can enter the scheduler at a time!
 	//
 	// Your code here:
-	//first this cpu lock the kernel, which protects others from aquiring kernel
 	lock_kernel();
-	//sched_yield();
-	sched_priority_yield();
-	// Remove this after you finish Exercise 6
+	sched_yield();
 }
 
 /*

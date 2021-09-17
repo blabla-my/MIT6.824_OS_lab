@@ -8,7 +8,7 @@
 #include <inc/memlayout.h>
 
 typedef int32_t envid_t;
-typedef int32_t priority; 
+
 // An environment ID 'envid_t' has three parts:
 //
 // +1+---------------21-----------------+--------10--------+
@@ -41,6 +41,7 @@ enum {
 // Special environment types
 enum EnvType {
 	ENV_TYPE_USER = 0,
+	ENV_TYPE_FS,		// File system server
 };
 
 struct Env {
@@ -65,9 +66,6 @@ struct Env {
 	uint32_t env_ipc_value;		// Data value sent to us
 	envid_t env_ipc_from;		// envid of the sender
 	int env_ipc_perm;		// Perm of page mapping received
-
-	//补充：进程优先级
-	priority env_priority;
 };
 
 #endif // !JOS_INC_ENV_H

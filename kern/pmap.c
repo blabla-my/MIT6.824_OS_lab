@@ -84,6 +84,8 @@ static void check_page_installed_pgdir(void);
 // If we're out of memory, boot_alloc should panic.
 // This function may ONLY be used during initialization,
 // before the page_free_list list has been set up.
+// Note that when this function is called, we are still using entry_pgdir,
+// which only maps the first 4MB of physical memory.
 static void *
 boot_alloc(uint32_t n)
 {
@@ -97,7 +99,7 @@ boot_alloc(uint32_t n)
 	// to any kernel code or global variables.
 	if (!nextfree) {
 		extern char end[];							//在/kern/kernel.ld中定义的符号，位于bss段的末尾
-		nextfree = ROUNDUP((char *) end, PGSIZE) + PGSIZE;
+		nextfree = ROUNDUP((char *) end, PGSIZE);
 	}
 
 	// Allocate a chunk large enough to hold 'n' bytes, then update
@@ -107,7 +109,6 @@ boot_alloc(uint32_t n)
 	// LAB 2: Your code here.
 	result = nextfree;
 	nextfree = ROUNDUP((char *)result + n, PGSIZE);
-	cprintf("boot_alloc memory at %x, next memory allocate at %x\n", result, nextfree);
 	return result;
 }
 
@@ -210,7 +211,7 @@ mem_init(void)
 	// Your code goes here:
 	// 'bootstack'定义在/kernel/entry.
 	boot_map_region(kern_pgdir, KSTACKTOP-KSTKSIZE, KSTKSIZE, PADDR(bootstack), PTE_W);
-	
+
 	//////////////////////////////////////////////////////////////////////
 	// Map all of physical memory at KERNBASE.
 	// Ie.  the VA range [KERNBASE, 2^32) should map to
@@ -219,7 +220,7 @@ mem_init(void)
 	// we just set up the mapping anyway.
 	// Permissions: kernel RW, user NONE
 	// Your code goes here:
-	boot_map_region(kern_pgdir, KERNBASE, 0x100000000 - KERNBASE, 0, PTE_W);
+	boot_map_region(kern_pgdir, KERNBASE, 0xffffffff - KERNBASE, 0, PTE_W);
 
 	// Initialize the SMP-related parts of the memory map
 	mem_init_mp();
@@ -271,9 +272,12 @@ mem_init_mp(void)
 	//     Permissions: kernel RW, user NONE
 	//
 	// LAB 4: Your code here:
-	int i;
-	for(i=0;i<NCPU;i++){
-		boot_map_region(kern_pgdir,KSTACKTOP-i*(KSTKSIZE+KSTKGAP)-KSTKSIZE,KSTKSIZE,PADDR(&percpu_kstacks[i]),PTE_W);
+	for (int i = 0; i < NCPU; i++) {
+		boot_map_region(kern_pgdir, 
+			KSTACKTOP - KSTKSIZE - i * (KSTKSIZE + KSTKGAP), 
+			KSTKSIZE, 
+			PADDR(percpu_kstacks[i]), 
+			PTE_W);
 	}
 }
 
@@ -322,11 +326,13 @@ page_init(void)
 	size_t io_hole_start_page = (size_t)IOPHYSMEM / PGSIZE;
 	size_t kernel_end_page = PADDR(boot_alloc(0)) / PGSIZE;		//这里调了半天，boot_alloc返回的是虚拟地址，需要转为物理地址
 	for (i = 0; i < npages; i++) {
-		// i==0, for idt;	i==7, MPENTRY_PADDR(0x7000)
-		if (i == 0 || i==7) {
+		if (i == 0) {
 			pages[i].pp_ref = 1;
 			pages[i].pp_link = NULL;
 		} else if (i >= io_hole_start_page && i < kernel_end_page) {
+			pages[i].pp_ref = 1;
+			pages[i].pp_link = NULL;
+		} else if (i == MPENTRY_PADDR / PGSIZE) {
 			pages[i].pp_ref = 1;
 			pages[i].pp_link = NULL;
 		} else {
@@ -354,7 +360,6 @@ page_alloc(int alloc_flags)
 {
 	struct PageInfo *ret = page_free_list;
 	if (ret == NULL) {
-		cprintf("page_alloc: out of free memory\n");
 		return NULL;
 	}
 	page_free_list = ret->pp_link;
@@ -615,16 +620,13 @@ mmio_map_region(physaddr_t pa, size_t size)
 	// Hint: The staff solution uses boot_map_region.
 	//
 	// Your code here:
-	//检查是否 pg-aligned
-	assert(base%PGSIZE == 0 && pa%PGSIZE==0);
-	if (base + ROUNDUP(size,PGSIZE) >= MMIOLIM || base < MMIOBASE){
-		panic("mmio out of memory");
-	}
-	//构造映射[base,base+size) ---> [pa,pa+size)
-	boot_map_region(kern_pgdir,base,ROUNDUP(size,PGSIZE),pa,PTE_PCD|PTE_PWT|PTE_W);
-	base += ROUNDUP(size,PGSIZE);
-	return (void*)(base-ROUNDUP(size,PGSIZE));
-	//panic("mmio_map_region not implemented");
+	size = ROUNDUP(pa+size, PGSIZE);
+	pa = ROUNDDOWN(pa, PGSIZE);
+	size -= pa;
+	if (base+size >= MMIOLIM) panic("not enough memory");
+	boot_map_region(kern_pgdir, base, size, pa, PTE_PCD|PTE_PWT|PTE_W);
+	base += size;
+	return (void*) (base - size);
 }
 
 static uintptr_t user_mem_check_addr;
@@ -651,7 +653,7 @@ int
 user_mem_check(struct Env *env, const void *va, size_t len, int perm)
 {
 	// LAB 3: Your code here.
-	//cprintf("user_mem_check va: %x, len: %x\n", va, len);
+	// cprintf("user_mem_check va: %x, len: %x\n", va, len);
 	uint32_t begin = (uint32_t) ROUNDDOWN(va, PGSIZE); 
 	uint32_t end = (uint32_t) ROUNDUP(va+len, PGSIZE);
 	uint32_t i;
@@ -662,7 +664,7 @@ user_mem_check(struct Env *env, const void *va, size_t len, int perm)
 			return -E_FAULT;
 		}
 	}
-	//cprintf("user_mem_check success va: %x, len: %x\n", va, len);
+	// cprintf("user_mem_check success va: %x, len: %x\n", va, len);
 	return 0;
 }
 

@@ -21,30 +21,28 @@ sched_yield(void)
 	//
 	// If no envs are runnable, but the environment previously
 	// running on this CPU is still ENV_RUNNING, it's okay to
-	// choose that environment.
+	// choose that environment. Make sure curenv is not null before
+	// dereferencing it.
 	//
 	// Never choose an environment that's currently running on
 	// another CPU (env_status == ENV_RUNNING). If there are
 	// no runnable environments, simply drop through to the code
 	// below to halt the cpu.
-	// LAB 4: Your code here.
-	envid_t i,curid;
-	idle = curenv;
 
-	if(idle == NULL)
-		curid = NENV-1;
-	else
-		curid = ENVX(idle->env_id);
-	// 将envs视为一个循环列表来查找，找到一个runnable的进程就run
-	// 找不到，就查看curenv能否再run(有可能已经结束了)
-	for( i=(curid+1)%NENV ; i != curid ; i = (i+1)%NENV){
-		if(envs[i].env_status == ENV_RUNNABLE){
-			env_run(&envs[i]);
+	// LAB 4: Your code here.
+	int start = 0;
+	int j;
+	if (curenv) {
+		start = ENVX(curenv->env_id) + 1;	//从当前Env结构的后一个开始
+	}
+	for (int i = 0; i < NENV; i++) {		//遍历所有Env结构
+		j = (start + i) % NENV;
+		if (envs[j].env_status == ENV_RUNNABLE) {
+			env_run(&envs[j]);
 		}
 	}
-
-	if(idle && (idle->env_status==ENV_RUNNING || idle->env_status==ENV_RUNNABLE)){
-		env_run(idle);
+	if (curenv && curenv->env_status == ENV_RUNNING) {		//这是必须的，假设当前只有一个Env，如果没有这个判断，那么这个CPU将会停机
+		env_run(curenv);
 	}
 	// sched_halt never returns
 	sched_halt();
@@ -52,8 +50,7 @@ sched_yield(void)
 
 // Halt this CPU when there is nothing to do. Wait until the
 // timer interrupt wakes it up. This function never returns.
-// halted cpu is in kernel, but doesn't do anything, and release
-// the kernel_lock
+//
 void
 sched_halt(void)
 {
@@ -99,27 +96,3 @@ sched_halt(void)
 	: : "a" (thiscpu->cpu_ts.ts_esp0));
 }
 
-void sched_priority_yield(void){
-	struct Env *idle;
-	envid_t i,maxi=-1;
-	idle = curenv;
-	// 寻找可以run的优先级最大的进程
-	priority max=-1;
-	for(i=0; i<NENV; i++){
-		if(envs[i].env_status == ENV_RUNNABLE && envs[i].env_priority>max){
-			max = envs[i].env_priority;
-			maxi = i;
-		}
-	}
-	// 未找到
-	if (maxi<0){
-		if(idle && (idle->env_status==ENV_RUNNING || idle->env_status==ENV_RUNNABLE)){
-			env_run(idle);
-		}
-	}
-	// 找到
-	else{
-		env_run(&envs[maxi]);
-	}
-	sched_halt();
-}

@@ -223,8 +223,6 @@ env_alloc(struct Env **newenv_store, envid_t parent_id)
 
 	// Generate an env_id for this environment.
 	generation = (e->env_id + (1 << ENVGENSHIFT)) & ~(NENV - 1);
-	// 简单地将优先级设置为envs的下标
-	e->env_priority = e-envs;
 	if (generation <= 0)	// Don't create a negative env_id.
 		generation = 1 << ENVGENSHIFT;
 	e->env_id = generation | (e - envs);
@@ -258,7 +256,7 @@ env_alloc(struct Env **newenv_store, envid_t parent_id)
 
 	// Enable interrupts while in user mode.
 	// LAB 4: Your code here.
-	e->env_tf.tf_eflags = FL_IF;
+	e->env_tf.tf_eflags |= FL_IF;
 	// Clear the page fault handler until user installs one.
 	e->env_pgfault_upcall = 0;
 
@@ -269,7 +267,7 @@ env_alloc(struct Env **newenv_store, envid_t parent_id)
 	env_free_list = e->env_link;
 	*newenv_store = e;
 
-	cprintf("[%08x] new env %08x\n", curenv ? curenv->env_id : 0, e->env_id);
+	// cprintf("[%08x] new env %08x\n", curenv ? curenv->env_id : 0, e->env_id);
 	return 0;
 }
 
@@ -364,7 +362,7 @@ load_icode(struct Env *e, uint8_t *binary)
 	ph = (struct Proghdr *) ((uint8_t *) ELFHDR + ELFHDR->e_phoff);
 	ph_num = ELFHDR->e_phnum;
 
-	lcr3(PADDR(e->env_pgdir));			//这步别忘了，虽然到目前位置e->env_pgdir和kern_pgdir除了PDX(UVPT)这一项不同，其他都一样。
+	lcr3(PADDR(e->env_pgdir));			//这步别忘了，虽然到目前为止e->env_pgdir和kern_pgdir除了PDX(UVPT)这一项不同，其他都一样。
 										//但是后面会给e->env_pgdir增加映射关系
 
 	for (int i = 0; i < ph_num; i++) {
@@ -396,12 +394,18 @@ void
 env_create(uint8_t *binary, enum EnvType type)
 {
 	// LAB 3: Your code here.
+
+	// If this is the file server (type == ENV_TYPE_FS) give it I/O privileges.
 	struct Env *e;
 	int r;
 	if ((r = env_alloc(&e, 0) != 0)) {
 		panic("create env failed\n");
 	}
-
+	// LAB 5: Your code here.
+	if(type == ENV_TYPE_FS){
+		e->env_tf.tf_eflags |= FL_IOPL_3;
+	}
+	
 	load_icode(e, binary);
 	e->env_type = type;
 }
@@ -423,7 +427,7 @@ env_free(struct Env *e)
 		lcr3(PADDR(kern_pgdir));
 
 	// Note the environment's demise.
-	cprintf("[%08x] free env %08x\n", curenv ? curenv->env_id : 0, e->env_id);
+	// cprintf("[%08x] free env %08x\n", curenv ? curenv->env_id : 0, e->env_id);
 
 	// Flush all mapped pages in the user portion of the address space
 	static_assert(UTOP % PTSIZE == 0);
@@ -534,14 +538,14 @@ env_run(struct Env *e)
 	//	e->env_tf to sensible values.
 
 	// LAB 3: Your code here.
-	if (curenv != NULL && curenv->env_status == ENV_RUNNING) {
+	if (curenv != NULL && curenv->env_status == ENV_RUNNING) {	//将原来正在运行的Env设置为ENV_RUNNABLE
 		curenv->env_status = ENV_RUNNABLE;
 	}
 	curenv = e;
 	e->env_status = ENV_RUNNING;
 	e->env_runs++;
 	lcr3(PADDR(e->env_pgdir));
-	unlock_kernel();
+	unlock_kernel();						//注意不能放最后，因为在env_pop_tr()后的语句执行不到
 	env_pop_tf(&e->env_tf);
 }
 

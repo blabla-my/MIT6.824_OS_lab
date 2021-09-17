@@ -20,7 +20,7 @@ syscall(int num, int check, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
 	// potentially change the condition codes and arbitrary
 	// memory locations.
 
-	asm volatile("int %1\n"
+	asm volatile("int %1\n"							//执行int T_SYSCALL指令
 		     : "=a" (ret)
 		     : "i" (T_SYSCALL),
 		       "a" (num),
@@ -94,6 +94,12 @@ sys_env_set_status(envid_t envid, int status)
 }
 
 int
+sys_env_set_trapframe(envid_t envid, struct Trapframe *tf)
+{
+	return syscall(SYS_env_set_trapframe, 1, envid, (uint32_t) tf, 0, 0, 0);
+}
+
+int
 sys_env_set_pgfault_upcall(envid_t envid, void *upcall)
 {
 	return syscall(SYS_env_set_pgfault_upcall, 1, envid, (uint32_t) upcall, 0, 0, 0);
@@ -111,8 +117,3 @@ sys_ipc_recv(void *dstva)
 	return syscall(SYS_ipc_recv, 1, (uint32_t)dstva, 0, 0, 0, 0);
 }
 
-//优先级调度
-void
-sys_priority_yield(void){
-	syscall(SYS_priority_yield,0,0,0,0,0,0);
-}

@@ -35,7 +35,7 @@ _pgfault_upcall:
 	// Call the C page fault handler.
 	pushl %esp			// function argument: pointer to UTF
 	movl _pgfault_handler, %eax
-	call *%eax
+	call *%eax				//调用页处理函数
 	addl $4, %esp			// pop function argument
 	
 	// Now the C page fault handler has returned and you must return
@@ -65,29 +65,26 @@ _pgfault_upcall:
 	// ways as registers become unavailable as scratch space.
 	//
 	// LAB 4: Your code here.
-	addl $8, %esp
-	subl $4, 0x28(%esp)	//utf->utf_esp -= 4
-	movl 0x28(%esp),%ebx
-	movl 0x20(%esp),%eax	//get utf_eip in eax
-	movl %eax,(%ebx)	//push utf_eip to the *trap time* stack
 
 	// Restore the trap-time registers.  After you do this, you
 	// can no longer modify any general-purpose registers.
 	// LAB 4: Your code here.
+	addl $8, %esp			//跳过utf_fault_va和utf_err
+	movl 40(%esp), %eax 	//保存中断发生时的esp到eax
+	movl 32(%esp), %ecx 	//保存终端发生时的eip到ecx
+	movl %ecx, -4(%eax) 	//将中断发生时的esp值亚入到到原来的栈中
 	popal
+	addl $4, %esp			//跳过eip
 
 	// Restore eflags from the stack.  After you do this, you can
 	// no longer use arithmetic operations or anything else that
 	// modifies eflags.
 	// LAB 4: Your code here.
-
-	addl $4, %esp
 	popfl
-
 	// Switch back to the adjusted trap-time stack.
 	// LAB 4: Your code here.
 	popl %esp
-
 	// Return to re-execute the instruction that faulted.
 	// LAB 4: Your code here.
+	lea -4(%esp), %esp		//因为之前压入了eip的值但是没有减esp的值，所以现在需要将esp寄存器中的值减4
 	ret
