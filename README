@@ -7,9 +7,11 @@ Branch view:
   - lab5
 
 Set up:
+git clone https://github.com/blabla-my/MIT6.824_OS_lab.git 
 
-git clone
+Use git checkout to access lab source file listed above. 
+git checkout lab3
+git checkout lab4
+···
 
-
-Use git checkout to access lab source file listed above.
 Each lab includes a report.pdf written in Chinese, which may help you understand.
