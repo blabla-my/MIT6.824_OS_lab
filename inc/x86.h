@@ -248,6 +248,10 @@ read_tsc(void)
 	return tsc;
 }
 
+
+// xchg return the old value in addr, and try to set new value
+// if old value=1, xchg wouldn't make any change
+// else, it realizes that it's its turn of changing value
 static inline uint32_t
 xchg(volatile uint32_t *addr, uint32_t newval)
 {

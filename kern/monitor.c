@@ -6,10 +6,11 @@
 #include <inc/memlayout.h>
 #include <inc/assert.h>
 #include <inc/x86.h>
-#include <kern/pmap.h>
+
 #include <kern/console.h>
 #include <kern/monitor.h>
 #include <kern/kdebug.h>
+#include <kern/trap.h>
 
 #define CMDBUF_SIZE	80	// enough for one VGA text line
 
@@ -24,8 +25,7 @@ struct Command {
 static struct Command commands[] = {
 	{ "help", "Display this list of commands", mon_help },
 	{ "kerninfo", "Display information about the kernel", mon_kerninfo },
-	{ "backtrace", "Display information about the kernel", mon_backtrace },
-	{ "showva2pa", "Display information about mapping virtual address to physical address",mon_showva2pa}
+	{ "backtrace", "Stack backtrace", mon_backtrace}
 };
 
 /***** Implementations of basic kernel monitor commands *****/
@@ -62,8 +62,7 @@ mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 	// Your code here.
 	uint32_t *ebp = (uint32_t *)read_ebp();
 	struct Eipdebuginfo eipdebuginfo;
-	while (ebp != 0)
-	{
+	while (ebp != 0) {
 		//打印ebp, eip, 最近的五个参数
 		uint32_t eip = *(ebp + 1);
 		cprintf("ebp %08x eip %08x args %08x %08x %08x %08x %08x\n", ebp, eip, *(ebp + 2), *(ebp + 3), *(ebp + 4), *(ebp + 5), *(ebp + 6));
@@ -77,52 +76,6 @@ mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 	return 0;
 }
 
-int
-mon_showva2pa(int argc,char **argv, struct Trapframe *tf){
-	intptr_t va;
-	struct PageInfo* pp; 
-	physaddr_t pa;
-	pte_t *pte;
-	char *end;
-	if(argc > 3 || argc <2){
-		cprintf("usage:\n");
-		cprintf("showva2pa [va] , to show mapping of va\n");
-		cprintf("showva2pa [va start] [va end] , (both align to PGSIZE),to show the mapping in the range [va_start, va_end]\n");
-	}
-	// print one va mapping
-	if(argc == 2){
-		va=strtol(argv[1],&end,16);
-		pp = page_lookup(kern_pgdir,(void*)va,&pte);
-		if(!pp) {
-			cprintf("VA: 0x%8x doesn't have a pa mapped\n");
-		}
-		else 
-			cprintf("VA: 0x%8x, PA: 0x%6x, pp_ref: %d, PTE_W: %d, PTE_U: %d\n",
-					va, page2pa(pp), pp->pp_ref, ((*pte)&PTE_W)>>1, ((*pte)&PTE_U)>>2);
-	}
-	// print a range of virtual page
-	if(argc == 3){
-		intptr_t va_pg_begin,va_pg_end;
-		//caculate the begin and end
-		va_pg_begin = strtol(argv[1],&end,16);
-		va_pg_end = strtol(argv[2],&end,16);
-		if( va_pg_begin % PGSIZE==0 && va_pg_end % PGSIZE==0 ){
-			//output
-			for(va=va_pg_begin; va<=va_pg_end; va+=PGSIZE){
-				pp = page_lookup(kern_pgdir,(void *)va,&pte);
-				if(!pp) {
-					cprintf("VA: 0x%8x doesn't have a pa mapped\n");	
-					continue;
-				}
-				cprintf("VA: 0x%8x, PA: 0x%6x, pp_ref: %d, PTE_W: %d, PTE_U: %d\n",
-						va, page2pa(pp), pp->pp_ref, ((*pte)&PTE_W)>>1, ((*pte)&PTE_U)>>2);
-			} 
-		}
-		else
-			cprintf("arguments not aligned!\n");
-	}
-	return 0;
-}
 
 
 /***** Kernel monitor command interpreter *****/
@@ -177,6 +130,8 @@ monitor(struct Trapframe *tf)
 	cprintf("Welcome to the JOS kernel monitor!\n");
 	cprintf("Type 'help' for a list of commands.\n");
 
+	if (tf != NULL)
+		print_trapframe(tf);
 
 	while (1) {
 		buf = readline("K> ");
