@@ -47,7 +47,7 @@ seta20.2:
   # effective memory map does not change during the switch.
   lgdt    gdtdesc
   movl    %cr0, %eax
-  orl     $CR0_PE_ON, %eax     # protected mode enable flag
+  orl     $CR0_PE_ON, %eax
   movl    %eax, %cr0
   
   # Jump to next instruction, but in 32-bit code segment.
@@ -75,9 +75,9 @@ spin:
 # Bootstrap GDT
 .p2align 2                                # force 4 byte alignment
 gdt:
-  SEG_NULL				                    # null seg
-  SEG(STA_X|STA_R, 0x0, 0xffffffff)	  # code seg(0x8)
-  SEG(STA_W, 0x0, 0xffffffff)	        # data seg(0x16)
+  SEG_NULL				# null seg
+  SEG(STA_X|STA_R, 0x0, 0xffffffff)	# code seg
+  SEG(STA_W, 0x0, 0xffffffff)	        # data seg
 
 gdtdesc:
   .word   0x17                            # sizeof(gdt) - 1

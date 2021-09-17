@@ -65,6 +65,7 @@ endif
 
 # try to generate a unique GDB port
 GDBPORT	:= $(shell expr `id -u` % 5000 + 25000)
+
 CC	:= $(GCCPREFIX)gcc -pipe
 GDB	:= $(GCCPREFIX)gdb
 AS	:= $(GCCPREFIX)as
@@ -137,8 +138,6 @@ $(OBJDIR)/.vars.%: FORCE
 # Include Makefrags for subdirectories
 include boot/Makefrag
 include kern/Makefrag
-include lib/Makefrag
-include user/Makefrag
 
 
 QEMUOPTS = -drive file=$(OBJDIR)/kern/kernel.img,index=0,media=disk,format=raw -serial mon:stdio -gdb tcp::$(GDBPORT)
@@ -299,22 +298,6 @@ myapi.key:
 #handin-prep:
 #	@./handin-prep
 
-# For test runs
-
-prep-%:
-	$(V)$(MAKE) "INIT_CFLAGS=${INIT_CFLAGS} -DTEST=`case $* in *_*) echo $*;; *) echo user_$*;; esac`" $(IMAGES)
-
-run-%-nox-gdb: prep-% pre-qemu
-	$(QEMU) -nographic $(QEMUOPTS) -S
-
-run-%-gdb: prep-% pre-qemu
-	$(QEMU) $(QEMUOPTS) -S
-
-run-%-nox: prep-% pre-qemu
-	$(QEMU) -nographic $(QEMUOPTS)
-
-run-%: prep-% pre-qemu
-	$(QEMU) $(QEMUOPTS)
 
 # This magic automatically generates makefile dependencies
 # for header files included from C source files we compile,

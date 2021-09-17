@@ -4,20 +4,11 @@
 #include <inc/assert.h>
 
 #include <kern/kdebug.h>
-#include <kern/pmap.h>
-#include <kern/env.h>
 
 extern const struct Stab __STAB_BEGIN__[];	// Beginning of stabs table
 extern const struct Stab __STAB_END__[];	// End of stabs table
 extern const char __STABSTR_BEGIN__[];		// Beginning of string table
 extern const char __STABSTR_END__[];		// End of string table
-
-struct UserStabData {
-	const struct Stab *stabs;
-	const struct Stab *stab_end;
-	const char *stabstr;
-	const char *stabstr_end;
-};
 
 
 // stab_binsearch(stabs, region_left, region_right, type, addr)
@@ -125,7 +116,6 @@ debuginfo_eip(uintptr_t addr, struct Eipdebuginfo *info)
 	info->eip_fn_addr = addr;
 	info->eip_fn_narg = 0;
 
-
 	// Find the relevant set of stabs
 	if (addr >= ULIM) {
 		stabs = __STAB_BEGIN__;
@@ -133,33 +123,8 @@ debuginfo_eip(uintptr_t addr, struct Eipdebuginfo *info)
 		stabstr = __STABSTR_BEGIN__;
 		stabstr_end = __STABSTR_END__;
 	} else {
-		// The user-application linker script, user/user.ld,
-		// puts information about the application's stabs (equivalent
-		// to __STAB_BEGIN__, __STAB_END__, __STABSTR_BEGIN__, and
-		// __STABSTR_END__) in a structure located at virtual address
-		// USTABDATA.
-		const struct UserStabData *usd = (const struct UserStabData *) USTABDATA;
-
-		// Make sure this memory is valid.
-		// Return -1 if it is not.  Hint: Call user_mem_check.
-		// LAB 3: Your code here.
-		int r = user_mem_check(curenv, (const void *)usd, sizeof(struct UserStabData), PTE_U);
-		if(r<0)
-			return -1;
-			
-		stabs = usd->stabs;
-		stab_end = usd->stab_end;
-		stabstr = usd->stabstr;
-		stabstr_end = usd->stabstr_end;
-
-		// Make sure the STABS and string table memory is valid.
-		// LAB 3: Your code here.
-		r = user_mem_check(curenv, (const void *)stabs, (uint32_t)stab_end - (uint32_t)stabs, PTE_U);
-		if(r<0)
-			return -1;
-		r = user_mem_check(curenv, (const void *)stabstr, (uint32_t)stabstr_end - (uint32_t)stabstr , PTE_U);
-		if(r<0)
-			return -1;
+		// Can't search for user-level addresses yet!
+  	        panic("User address");
 	}
 
 	// String table validity checks
@@ -201,8 +166,6 @@ debuginfo_eip(uintptr_t addr, struct Eipdebuginfo *info)
 		lline = lfile;
 		rline = rfile;
 	}
-	//info->eip_fn_addr = stabs[rfun].n_value;
-
 	// Ignore stuff after the colon.
 	info->eip_fn_namelen = strfind(info->eip_fn_name, ':') - info->eip_fn_name;
 
@@ -216,14 +179,15 @@ debuginfo_eip(uintptr_t addr, struct Eipdebuginfo *info)
 	//	Look at the STABS documentation and <inc/stab.h> to find
 	//	which one.
 	// Your code here.
-
 	stab_binsearch(stabs, &lline, &rline, N_SLINE, addr);
-	if (lline <= rline) {
-		info->eip_line = stabs[rline].n_value;
-	}else{
+	if (lline <= rline)
+	{
+		info->eip_line = stabs[lline].n_desc;
+	}
+	else
+	{
 		return -1;
 	}
-	
 
 	// Search backwards from the line number for the relevant filename
 	// stab.
@@ -237,7 +201,6 @@ debuginfo_eip(uintptr_t addr, struct Eipdebuginfo *info)
 	if (lline >= lfile && stabs[lline].n_strx < stabstr_end - stabstr)
 		info->eip_file = stabstr + stabs[lline].n_strx;
 
-	
 
 	// Set eip_fn_narg to the number of arguments taken by the function,
 	// or 0 if there was no containing function.
